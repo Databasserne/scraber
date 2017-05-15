@@ -10,6 +10,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Arrays;
 import java.util.HashSet;
 import javax.xml.parsers.DocumentBuilder;
@@ -35,7 +36,7 @@ public class Scraber {
     
     private static final String DRIVER_MYSQL = "jdbc:mysql://localhost:3306/gutenberg?useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=UTC";
     private static final String MYSQL_USER = "root";
-    private static final String MYSQL_PASS = "wa";
+    private static final String MYSQL_PASS = "mk101593";
     
     public static void main(String[] args) throws IOException, SQLException, ClassNotFoundException, SAXException, ParserConfigurationException {
         long time = System.currentTimeMillis();
@@ -43,42 +44,7 @@ public class Scraber {
         //insertCities(getConnection(), getCities());
         //HashSet<City> cities = getCitiesFromDb();
         
-        String bookPath = "books/ebooks/";
-        String ebookPath = "books/metadata/%s/pg%s.rdf";
-        File dir = new File(bookPath);
-        File[] books = dir.listFiles();
-        int c = 0;
-        for(File book : books) {
-            String bookNumber = book.getName().split("\\.")[0];
-            File meta = new File(String.format(ebookPath, bookNumber, bookNumber));
-            if(!meta.exists()){
-                System.out.println("No meta data found!");
-                System.out.println("");
-                continue;
-            }
-            
-            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
-            Document doc;
-            try {
-                doc = dBuilder.parse(meta);
-            }catch(SAXException e){
-                System.out.println("Cound not open meta data file");
-                System.out.println("");
-                continue;
-            }
-            doc.getDocumentElement().normalize();
-            
-            String title = doc.getElementsByTagName("dcterms:title").item(0).getTextContent();
-            NodeList creator = doc.getElementsByTagName("pgterms:name");
-            String author = "No author";
-            if(creator.getLength() > 0)
-                author = creator.item(0).getTextContent();
-            
-            System.out.println("Title : " + title);            
-            System.out.println("Author : " + author);
-            System.out.println("");
-        }
+        insertBooks(getConnection());
         
         HashSet<String> city = null;
         //for (int i = 0; i < 10000; i++) {
@@ -193,7 +159,81 @@ public class Scraber {
         return cities;
     }
     
-    private static void insertBooks(Connection con, HashSet<String> books) {
-        
+    private static void insertBooks(Connection con) throws IOException, ParserConfigurationException {
+        String bookPath = "books/ebooks/";
+        String ebookPath = "books/metadata/epub/%s/pg%s.rdf";
+        File dir = new File(bookPath);
+        File[] books = dir.listFiles();
+        int c = 0;
+        for(File book : books) {
+            String bookNumber = book.getName().split("\\.")[0];
+            File meta = new File(String.format(ebookPath, bookNumber, bookNumber));
+            if(!meta.exists()){
+                System.out.println("No meta data found!");
+                System.out.println("");
+                continue;
+            }
+            
+            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+            Document doc;
+            try {
+                doc = dBuilder.parse(meta);
+            }catch(SAXException e){
+                System.out.println("Cound not open meta data file");
+                System.out.println("");
+                continue;
+            }
+            doc.getDocumentElement().normalize();
+            
+            String title = doc.getElementsByTagName("dcterms:title").item(0).getTextContent();
+            NodeList creator = doc.getElementsByTagName("pgterms:name");
+            String author = "Unknown";
+            if(creator.getLength() > 0)
+                author = creator.item(0).getTextContent();
+            
+            System.out.println("Title : " + title);            
+            System.out.println("Author : " + author);
+            System.out.println("");
+            
+            insertBook(con, title, author);
+        }
+    }
+    
+    private static void insertBook(Connection con, String title, String author) {
+        try {
+            stmt = con.prepareStatement("INSERT INTO books (Name) VALUES (?)", Statement.RETURN_GENERATED_KEYS);
+            stmt.setString(1, title);
+            stmt.executeUpdate();
+            result = stmt.getGeneratedKeys();
+            Long bookId = 0L;
+            if(result.next()) {
+                bookId = result.getLong(1);
+            }
+            
+            stmt = con.prepareStatement("SELECT id FROM authors WHERE Name = ?");
+            stmt.setString(1, author);
+            result = stmt.executeQuery();
+            Long authorId = 0L;
+            if(result.next()) {
+                authorId = result.getLong(1);
+            } else {
+                stmt = con.prepareStatement("INSERT INTO authors (Name) VALUES (?)", Statement.RETURN_GENERATED_KEYS);
+                stmt.setString(1, author);
+                stmt.executeUpdate();
+                result = stmt.getGeneratedKeys();
+                if(result.next()) {
+                    authorId = result.getLong(1);
+                }
+            }
+            
+            stmt = con.prepareStatement("INSERT INTO books_authors (Book_ID, Author_ID) VALUES (?, ?)");
+            stmt.setLong(1, bookId);
+            stmt.setLong(2, authorId);
+            stmt.executeUpdate();
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }
