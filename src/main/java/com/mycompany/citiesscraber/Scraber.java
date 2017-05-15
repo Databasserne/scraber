@@ -10,11 +10,14 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.List;
-import static java.util.stream.Collectors.toList;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import org.w3c.dom.Document;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
 /*
  * To change this license header, choose License Headers in Project Properties.
@@ -34,22 +37,47 @@ public class Scraber {
     private static final String MYSQL_USER = "root";
     private static final String MYSQL_PASS = "wa";
     
-    public static void main(String[] args) throws IOException, SQLException, ClassNotFoundException {
+    public static void main(String[] args) throws IOException, SQLException, ClassNotFoundException, SAXException, ParserConfigurationException {
         long time = System.currentTimeMillis();
         
         //insertCities(getConnection(), getCities());
         //HashSet<City> cities = getCitiesFromDb();
         
         String bookPath = "books/ebooks/";
-        String ebookPath = "books/metadata/epub/%s/pg%s.rdf";
+        String ebookPath = "books/metadata/%s/pg%s.rdf";
         File dir = new File(bookPath);
         File[] books = dir.listFiles();
+        int c = 0;
         for(File book : books) {
             String bookNumber = book.getName().split("\\.")[0];
             File meta = new File(String.format(ebookPath, bookNumber, bookNumber));
+            if(!meta.exists()){
+                System.out.println("No meta data found!");
+                System.out.println("");
+                continue;
+            }
             
-            System.out.println(meta.getName());
-            System.out.println(book.getName());
+            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+            Document doc;
+            try {
+                doc = dBuilder.parse(meta);
+            }catch(SAXException e){
+                System.out.println("Cound not open meta data file");
+                System.out.println("");
+                continue;
+            }
+            doc.getDocumentElement().normalize();
+            
+            String title = doc.getElementsByTagName("dcterms:title").item(0).getTextContent();
+            NodeList creator = doc.getElementsByTagName("pgterms:name");
+            String author = "No author";
+            if(creator.getLength() > 0)
+                author = creator.item(0).getTextContent();
+            
+            System.out.println("Title : " + title);            
+            System.out.println("Author : " + author);
+            System.out.println("");
         }
         
         HashSet<String> city = null;
@@ -66,8 +94,8 @@ public class Scraber {
     
     private static HashSet<String> scrabeCity(HashSet<City> citiesToFind, String textFile) throws FileNotFoundException, IOException {
         HashSet<String> found;
-        
         BufferedReader br = new BufferedReader(new FileReader(textFile));
+        HashSet<String> book;
         try {
             StringBuilder sb = new StringBuilder();
             String line = br.readLine();
@@ -78,18 +106,16 @@ public class Scraber {
                 line = br.readLine();
             }
             String everything = sb.toString();
-            
-            HashSet<String> book = new HashSet<>(Arrays.asList(everything.split(" ")));
-            
+
+            book = new HashSet<>(Arrays.asList(everything.split(" ")));
+
             book.retainAll(citiesToFind);
-            
-            found = book;
+
 
         } finally {
             br.close();
         }
-        
-        return found;
+        return book;
     }
 
     private static HashSet<City> getCities() throws FileNotFoundException, IOException {
