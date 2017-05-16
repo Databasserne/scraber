@@ -42,15 +42,21 @@ public class Scraber {
         long time = System.currentTimeMillis();
         
         //insertCities(getConnection(), getCities());
-        //HashSet<City> cities = getCitiesFromDb();
+        HashSet<City> cities = getCitiesFromDb();
+        //HashSet<Book> books = getBooksFromDb();
         
-        insertBooks(getConnection());
+        //insertBooks(getConnection());
+        
         
         HashSet<String> city = null;
-        //for (int i = 0; i < 10000; i++) {
-//            city = scrabeCity(cities, "1025.txt");
-  //      }
-        //city = scrabeCity(cities, "1025.txt");
+        
+        String bookPath = "books/ebooks/";
+        File dir = new File(bookPath);
+        File[] books = dir.listFiles();
+        //for (File book : books) {
+            File testFile = new File("1025.txt"); // For testing, running single book.
+            city = scrabeCity(cities, testFile);
+        //}
         System.out.println("Time: " + (System.currentTimeMillis() - time));
         
 //        for (String string : city) {
@@ -58,10 +64,36 @@ public class Scraber {
 //        }
     }
     
-    private static HashSet<String> scrabeCity(HashSet<City> citiesToFind, String textFile) throws FileNotFoundException, IOException {
-        HashSet<String> found;
-        BufferedReader br = new BufferedReader(new FileReader(textFile));
-        HashSet<String> book;
+    private static HashSet<String> scrabeCity(HashSet<City> citiesToFind, File file) throws FileNotFoundException, IOException, ParserConfigurationException {
+        String ebookPath = "books/metadata/epub/%s/pg%s.rdf";
+        String bookNumber = file.getName().split("\\.")[0];
+        File meta = new File(String.format(ebookPath, bookNumber, bookNumber));
+        if(!meta.exists()){
+            System.out.println("No meta data found!");
+            System.out.println("");
+            return null;
+        }
+
+        DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+        DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+        Document doc;
+        try {
+            doc = dBuilder.parse(meta);
+        }catch(SAXException e){
+            System.out.println("Cound not open meta data file");
+            System.out.println("");
+            return null;
+        }
+        doc.getDocumentElement().normalize();
+        String title = doc.getElementsByTagName("dcterms:title").item(0).getTextContent();
+        
+        HashSet<String> found = new HashSet<>();
+        for(City city : citiesToFind) {
+            found.add(city.getName());
+        }
+        
+        BufferedReader br = new BufferedReader(new FileReader(file));
+        HashSet<String> book = null;
         try {
             StringBuilder sb = new StringBuilder();
             String line = br.readLine();
@@ -75,13 +107,45 @@ public class Scraber {
 
             book = new HashSet<>(Arrays.asList(everything.split(" ")));
 
-            book.retainAll(citiesToFind);
+            book.retainAll(found);
+            
+            insertCitiesForBook(getConnection(), book, title);
 
-
+        } catch (Exception e) {
+            e.printStackTrace();
         } finally {
             br.close();
         }
         return book;
+    }
+    
+    private static void insertCitiesForBook(Connection con, HashSet<String> cities, String bookTitle) {
+        try {
+            stmt = con.prepareStatement("SELECT * FROM books WHERE Name = ?");
+            stmt.setString(1, bookTitle);
+            result = stmt.executeQuery();
+            Long bookId = 0L;
+            if(result.next()) {
+                bookId = result.getLong(1);
+            
+                for(String city : cities) {
+                    stmt = con.prepareStatement("SELECT id FROM cities WHERE Name = ?");
+                    stmt.setString(1, city);
+                    result = stmt.executeQuery();
+                    Long cityId = 0L;
+                    if(result.next()) {
+                        cityId = result.getLong(1);
+                        
+                        stmt = con.prepareStatement("INSERT INTO books_cities (Book_ID, City_ID) VALUES (?, ?)");
+                        stmt.setLong(1, bookId);
+                        stmt.setLong(2, cityId);
+                        stmt.executeUpdate();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private static HashSet<City> getCities() throws FileNotFoundException, IOException {
@@ -157,6 +221,22 @@ public class Scraber {
         }
         
         return cities;
+    }
+    
+    private static HashSet<Book> getBooksFromDb() {
+        HashSet<Book> books = new HashSet<>();
+        try {
+            stmt = getConnection().prepareStatement("SELECT * FROM books");
+            result = stmt.executeQuery();
+            while(result.next()) {
+                Book book = new Book(result.getString("Name"));
+                book.setId(result.getLong("id"));
+                books.add(book);
+            }
+        } catch (Exception e) {
+        }
+        
+        return books;
     }
     
     private static void insertBooks(Connection con) throws IOException, ParserConfigurationException {
