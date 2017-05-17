@@ -12,10 +12,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.List;
+import java.util.regex.Matcher;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
@@ -26,6 +25,7 @@ import org.neo4j.driver.v1.GraphDatabase;
 import org.neo4j.driver.v1.Record;
 import org.neo4j.driver.v1.Session;
 import org.neo4j.driver.v1.StatementResult;
+import org.neo4j.driver.v1.Values;
 import org.w3c.dom.Document;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
@@ -52,7 +52,7 @@ public class Scraber {
     private static final String NEO4J_PASS = "1234";
 
     public static void main(String[] args) throws IOException, SQLException, ClassNotFoundException, SAXException, ParserConfigurationException {
-        insertCities(getNeo4jCon(), getCities());
+        //insertCities(getNeo4jCon(), getCities());
         //HashSet<City> cities = getCitiesFromDb();
 
         insertBooks(getNeo4jCon());
@@ -102,12 +102,13 @@ public class Scraber {
         if(cities.size() <= 0)
             return;
         
+        
         for (String city : cities) {
-            String query = "Match(b:Book{name: \""+bookTitle+"\"})\n" +
+            String query = "Match(b:Book{name: {bookTitle}})\n" +
                     "Match(c:City {name: '" + city + "'})" +
-                    "Create (b)-[:Mentions]->(c)";
+                    "Merge (b)-[:Mentions]->(c)";
             try (Session session = driver.session()) {
-                session.run(query);
+                session.run(query, Values.parameters("bookTitle", bookTitle));
             }
         }
     }
@@ -220,15 +221,13 @@ public class Scraber {
         }
     }
 
-    private static HashSet<City> getCitiesFromDb(Connection con) {
-        HashSet<City> cities = new HashSet<>();
+    private static HashSet<String> getCitiesFromDb(Connection con) {
+        HashSet<String> cities = new HashSet<>();
         try {
             stmt = con.prepareStatement("SELECT * FROM Cities");
             result = stmt.executeQuery();
             while (result.next()) {
-                City city = new City(result.getString("Name"), result.getFloat("Geolat"), result.getFloat("Geolng"));
-                city.setId(result.getLong("id"));
-                cities.add(city);
+                cities.add(result.getString("Name"));
             }
         } catch (Exception e) {
         }
@@ -298,7 +297,7 @@ public class Scraber {
         File dir = new File(bookPath);
         File[] books = dir.listFiles();
         int c = 1;
-        HashSet<City> cities = getCitiesFromDb(con);
+        HashSet<String> cities = getCitiesFromDb(con);
         for (File book : books) {
             long time = System.currentTimeMillis();
 
@@ -318,11 +317,11 @@ public class Scraber {
     }
 
     private static void insertBook(Driver driver, String title, String author) {
-        String bookTitle = StringEscapeUtils.escapeJava(title);
         try (Session session = driver.session()) {
-            session.run("create (b:Book{name: \""+ bookTitle + "\"})"
-                    + "merge(a:Author{name: \""+author+"\"})"
-                    + "create (a)-[r:Authored]->(b)");
+            session.run("merge (b:Book{name: {bookTitle}}) "
+                    + "merge(a:Author{name: \""+author+"\"}) "
+                    + "merge (a)-[r:Authored]->(b)",
+                    Values.parameters("bookTitle", title));
         }
     }
 
