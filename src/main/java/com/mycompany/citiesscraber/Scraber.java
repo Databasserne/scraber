@@ -41,27 +41,19 @@ public class Scraber {
     public static void main(String[] args) throws IOException, SQLException, ClassNotFoundException, SAXException, ParserConfigurationException {
         long time = System.currentTimeMillis();
         
-        //insertCities(getConnection(), getCities());
-        HashSet<City> cities = getCitiesFromDb();
-        //HashSet<Book> books = getBooksFromDb();
+        insertCities(getConnection(), getCities());
+        //HashSet<City> cities = getCitiesFromDb();
         
-        //insertBooks(getConnection());
+        insertBooks(getConnection());
         
-        
-        HashSet<String> city = null;
-        
-        String bookPath = "books/ebooks/";
-        File dir = new File(bookPath);
-        File[] books = dir.listFiles();
-        //for (File book : books) {
-            File testFile = new File("1025.txt"); // For testing, running single book.
-            city = scrabeCity(cities, testFile);
-        //}
-        System.out.println("Time: " + (System.currentTimeMillis() - time));
-        
-//        for (String string : city) {
-//            System.out.println(string);
+//        String bookPath = "books/ebooks/";
+//        File dir = new File(bookPath);
+//        File[] books = dir.listFiles();
+//        for (File book : books) {
+//            //File testFile = new File("1025.txt"); // For testing, running single book.
+//            city = scrabeCity(cities, book);
 //        }
+        System.out.println("Time: " + (System.currentTimeMillis() - time));
     }
     
     private static HashSet<String> scrabeCity(HashSet<City> citiesToFind, File file) throws FileNotFoundException, IOException, ParserConfigurationException {
@@ -187,13 +179,15 @@ public class Scraber {
     
     private static void insertCities(Connection con, HashSet<City> cities) {
         try {
+            HashSet<String> tmpCities = new HashSet<>();
+            stmt = con.prepareStatement("SELECT Name FROM cities");
+            result = stmt.executeQuery();
+            while(result.next()) {
+                tmpCities.add(result.getString(1));
+            }
+            
             for(City city : cities) {
-                // Check if city exists.
-                stmt = con.prepareStatement("SELECT * FROM cities WHERE Name = ?");
-                stmt.setString(1, city.getName());
-                result = stmt.executeQuery();
-                
-                if(!result.next()) {
+                if(!tmpCities.contains(city.getName())) {
                     stmt = con.prepareStatement("INSERT INTO cities (Name, Geolat, Geolng) VALUES (?, ?, ?)");
                     stmt.setString(1, city.getName());
                     stmt.setFloat(2, city.getGeolat());
@@ -245,6 +239,7 @@ public class Scraber {
         File dir = new File(bookPath);
         File[] books = dir.listFiles();
         int c = 0;
+        HashSet<City> cities = getCitiesFromDb();
         for(File book : books) {
             String bookNumber = book.getName().split("\\.")[0];
             File meta = new File(String.format(ebookPath, bookNumber, bookNumber));
@@ -277,6 +272,7 @@ public class Scraber {
             System.out.println("");
             
             insertBook(con, title, author);
+            scrabeCity(cities, book);
         }
     }
     
