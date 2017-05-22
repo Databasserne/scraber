@@ -58,7 +58,7 @@ public class Scraber {
         insertBooks(getNeo4jCon());
 
 //        String bookPath = "books/ebooks/";
-//        File dir = new File(bookPath);
+//        File dir = new File(bookPath);x
 //        File[] books = dir.listFiles();
 //        for (File book : books) {
 //            //File testFile = new File("1025.txt"); // For testing, running single book.
@@ -105,10 +105,10 @@ public class Scraber {
         
         for (String city : cities) {
             String query = "Match(b:Book{name: {bookTitle}})\n" +
-                    "Match(c:City {name: '" + city + "'})" +
+                    "Match(c:City {name: {city}})" +
                     "Merge (b)-[:Mentions]->(c)";
             try (Session session = driver.session()) {
-                session.run(query, Values.parameters("bookTitle", bookTitle));
+                session.run(query, Values.parameters("bookTitle", bookTitle, "city", city));
             }
         }
     }
@@ -275,6 +275,11 @@ public class Scraber {
         int c = 1;
         HashSet<String> cities = getCitiesFromDb(driver);
         for (File book : books) {
+            if(c < 5000){
+                c++;
+                continue;
+            }
+            
             long time = System.currentTimeMillis();
 
             String bookNumber = book.getName().split("\\.")[0];
@@ -319,9 +324,9 @@ public class Scraber {
     private static void insertBook(Driver driver, String title, String author) {
         try (Session session = driver.session()) {
             session.run("merge (b:Book{name: {bookTitle}}) "
-                    + "merge(a:Author{name: \""+author+"\"}) "
+                    + "merge(a:Author{name: {author}}) "
                     + "merge (a)-[r:Authored]->(b)",
-                    Values.parameters("bookTitle", title));
+                    Values.parameters("bookTitle", title, "author", author));
         }
     }
 
